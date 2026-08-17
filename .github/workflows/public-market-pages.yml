@@ -1,0 +1,56 @@
+name: Public Market Daily Pages
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 22 * * 1-5"
+  push:
+    branches: [main]
+    paths:
+      - "apps/dsa-web/**"
+      - "scripts/generate_public_market.py"
+      - ".github/workflows/public-market-pages.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: public-market-pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Generate daily market brief
+        run: python scripts/generate_public_market.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/dsa-web/package-lock.json
+      - name: Install web dependencies
+        working-directory: apps/dsa-web
+        run: npm ci
+      - name: Build public market site
+        working-directory: apps/dsa-web
+        env:
+          VITE_PUBLIC_MARKET_MODE: "true"
+          VITE_PUBLIC_BASE: /${{ github.event.repository.name }}/
+        run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: static
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

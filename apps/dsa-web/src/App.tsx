@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { UiLanguageProvider, useUiLanguage } from './contexts/UiLanguageContext';
 import { useAgentChatStore } from './stores/agentChatStore';
 import './App.css';
+import PublicMarketPage from './pages/PublicMarketPage';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
 const BacktestPage = lazy(() => import('./pages/BacktestPage'));
@@ -95,6 +96,10 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  if (import.meta.env.VITE_PUBLIC_MARKET_MODE === 'true') {
+    return <PublicMarketPage />;
+  }
+
   return (
     <UiLanguageProvider>
       <Router>

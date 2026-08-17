@@ -213,6 +213,9 @@ const getVendorChunkName = (id: string): string | undefined => {
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: process.env.VITE_PUBLIC_MARKET_MODE === 'true'
+    ? (process.env.VITE_PUBLIC_BASE || '/')
+    : '/',
   define: {
     __APP_PACKAGE_VERSION__: JSON.stringify(appVersion),
     __APP_REVISION__: JSON.stringify(appRevision),
