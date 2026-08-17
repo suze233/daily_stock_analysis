@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [修复] 全球市场日报明确区分盘中快照与最近日线，并将黄金、原油标注为对应期货品种，避免将盘中行情误解为收盘价。
 - [新功能] 新增面向 GitHub Pages 的中文全球市场日报，每日自动展示纳指、标普 500、黄金和 WTI 原油的行情、五日趋势、相关新闻与可能原因。
 
 <!-- 新条目格式：- [类型] 描述（类型取值：新功能/改进/修复/文档/测试/chore）-->

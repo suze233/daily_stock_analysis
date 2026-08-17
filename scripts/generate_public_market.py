@@ -9,12 +9,13 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
+from time import time
 
 ASSETS = (
     ("NASDAQ", "纳斯达克综合指数", "^IXIC", "Nasdaq stock market Federal Reserve", "美股"),
     ("S&P 500", "标普 500", "^GSPC", "S&P 500 US stock market economy", "美股"),
-    ("GOLD", "纽约黄金", "GC=F", "gold price dollar Federal Reserve", "黄金"),
-    ("WTI", "WTI 原油", "CL=F", "oil price OPEC inventory supply", "能源"),
+    ("GOLD", "COMEX 黄金期货", "GC=F", "gold price dollar Federal Reserve", "黄金"),
+    ("WTI", "WTI 原油期货", "CL=F", "oil price OPEC inventory supply", "能源"),
 )
 HEADERS = {"User-Agent": "Mozilla/5.0 DSA-Public-Brief/1.0"}
 
@@ -25,7 +26,7 @@ def request_bytes(url: str) -> bytes:
         return response.read()
 
 
-def fetch_quote(ticker: str) -> tuple[float, float, str, list[float]]:
+def fetch_quote(ticker: str) -> tuple[float, float, str, list[float], str]:
     encoded = urllib.parse.quote(ticker, safe="")
     payload = json.loads(request_bytes(
         f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=7d&interval=1d"
@@ -37,7 +38,10 @@ def fetch_quote(ticker: str) -> tuple[float, float, str, list[float]]:
     current, previous = closes[-1], closes[-2]
     change = (current / previous - 1) * 100
     trade_date = datetime.fromtimestamp(result["timestamp"][-1], timezone.utc).strftime("%Y.%m.%d")
-    return current, change, trade_date, [round(value, 2) for value in closes[-5:]]
+    regular = result.get("meta", {}).get("currentTradingPeriod", {}).get("regular", {})
+    is_regular_session = regular.get("start", 0) <= time() <= regular.get("end", -1)
+    session = "盘中快照" if is_regular_session else "最近日线"
+    return current, change, trade_date, [round(value, 2) for value in closes[-5:]], session
 
 
 def fetch_news(query: str, category: str) -> list[dict[str, str]]:
@@ -92,7 +96,7 @@ def main() -> None:
             headlines = fetch_news(query, category)
         except (OSError, ET.ParseError):
             headlines = []
-        value, change, trade_date, history = fetch_quote(ticker)
+        value, change, trade_date, history, session = fetch_quote(ticker)
         reason, detail, tags = explain(symbol, change, headlines)
         markets.append({
             "symbol": symbol,
@@ -100,6 +104,7 @@ def main() -> None:
             "value": f"{value:,.2f}" if symbol in {"NASDAQ", "S&P 500"} else f"${value:,.2f}",
             "change": round(change, 2),
             "history": history,
+            "session": session,
             "reason": reason,
             "detail": detail,
             "tags": tags,
@@ -111,7 +116,7 @@ def main() -> None:
     title = "风险偏好回升" if equity_change > 0.25 else "风险情绪趋弱" if equity_change < -0.25 else "市场情绪相对谨慎"
     payload = {
         "date": max(dates),
-        "updatedAt": datetime.now(timezone.utc).strftime("更新于 UTC %Y-%m-%d %H:%M"),
+        "updatedAt": datetime.now(timezone.utc).strftime("数据源：Yahoo Finance · UTC %Y-%m-%d %H:%M"),
         "pulse": {
             "title": title,
             "summary": f"纳指与标普平均变动 {equity_change:+.2f}%；黄金 {markets[2]['change']:+.2f}%，WTI 原油 {markets[3]['change']:+.2f}%。",
