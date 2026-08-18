@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from time import time
+from zoneinfo import ZoneInfo
 
 ASSETS = (
     ("NASDAQ 100", "纳斯达克 100 指数", "^NDX", "Nasdaq 100 technology stocks Federal Reserve", "美股"),
@@ -33,16 +34,25 @@ def fetch_quote(ticker: str) -> tuple[float, float, str, list[float], str]:
         f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=7d&interval=1d"
     ))
     result = payload["chart"]["result"][0]
-    closes = [value for value in result["indicators"]["quote"][0]["close"] if value is not None]
-    if len(closes) < 2:
+    points = [
+        (timestamp, close)
+        for timestamp, close in zip(result["timestamp"], result["indicators"]["quote"][0]["close"])
+        if close is not None
+    ]
+    if len(points) < 2:
         raise RuntimeError(f"insufficient quote history for {ticker}")
-    current, previous = closes[-1], closes[-2]
-    change = (current / previous - 1) * 100
-    trade_date = datetime.fromtimestamp(result["timestamp"][-1], timezone.utc).strftime("%Y.%m.%d")
     regular = result.get("meta", {}).get("currentTradingPeriod", {}).get("regular", {})
     is_regular_session = regular.get("start", 0) <= time() <= regular.get("end", -1)
-    session = "盘中快照" if is_regular_session else "最近日线"
-    return current, change, trade_date, [round(value, 2) for value in closes[-5:]], session
+    # Yahoo's final daily candle can still be revised during regular trading.
+    # Use the preceding confirmed bar for a daily report generated intraday.
+    if is_regular_session and len(points) >= 3:
+        points = points[:-1]
+    current, previous = points[-1][1], points[-2][1]
+    change = (current / previous - 1) * 100
+    exchange_timezone = result.get("meta", {}).get("exchangeTimezoneName", "America/New_York")
+    trade_date = datetime.fromtimestamp(points[-1][0], ZoneInfo(exchange_timezone)).strftime("%Y.%m.%d")
+    session = "\u6700\u8fd1\u65e5\u7ebf"
+    return current, change, trade_date, [round(value, 2) for _, value in points[-5:]], session
 
 
 def fetch_news(query: str, category: str) -> list[dict[str, str]]:
