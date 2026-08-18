@@ -79,23 +79,37 @@ def fetch_news(query: str, category: str) -> list[dict[str, str]]:
     return items
 
 
-def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tuple[str, str, list[str]]:
+def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tuple[str, str, list[str], str, str]:
     direction = "走强" if change >= 0 else "承压"
     headline_text = " ".join(item["title"] for item in headlines).lower()
     if symbol in {"NASDAQ 100", "NASDAQ", "S&P 500"}:
-        if any(keyword in headline_text for keyword in ("fed", "rate", "inflation", "利率", "通胀")):
-            reason, tags = f"利率预期变化，指数{direction}", ["利率预期", "宏观数据", "风险偏好"]
-        elif any(keyword in headline_text for keyword in ("earnings", "tech", "ai", "财报", "科技")):
-            reason, tags = f"科技与盈利预期主导，指数{direction}", ["科技权重", "企业盈利", "资金流向"]
+        if any(keyword in headline_text for keyword in ("tech boost", "technology stocks", "ai", "科技股")):
+            reason, tags = f"科技权重股表现变化，带动指数{direction}", ["科技权重", "企业盈利", "资金流向"]
+        elif any(keyword in headline_text for keyword in ("rate hike bets retreat", "fed", "rate", "inflation", "利率", "通胀")):
+            reason, tags = f"联储利率预期变化，影响成长股估值，指数{direction}", ["联储政策", "利率预期", "成长股估值"]
+        elif any(keyword in headline_text for keyword in ("earnings", "retail earnings", "财报")):
+            reason, tags = f"企业财报预期变化，令指数{direction}", ["企业盈利", "业绩预期", "风险偏好"]
         else:
-            reason, tags = f"风险偏好波动，指数{direction}", ["市场情绪", "资金流向", "宏观预期"]
+            reason, tags = f"当日美股资金风险偏好变化，令指数{direction}", ["市场情绪", "资金流向", "宏观预期"]
     elif symbol == "GOLD":
-        reason, tags = f"美元与利率预期影响，黄金{direction}", ["美元指数", "实际利率", "避险需求"]
+        if any(keyword in headline_text for keyword in ("softer dollar", "dollar weakens", "美元走弱")):
+            reason, tags = f"美元走弱降低非美元买入成本，推动黄金{direction}", ["美元指数", "实际利率", "避险需求"]
+        elif any(keyword in headline_text for keyword in ("rate", "fed", "利率")):
+            reason, tags = f"利率预期回落，降低持有黄金的机会成本，黄金{direction}", ["实际利率", "联储政策", "避险需求"]
+        else:
+            reason, tags = f"避险需求与美元变化共同影响黄金{direction}", ["美元指数", "实际利率", "避险需求"]
     else:
-        reason, tags = f"供应与库存预期变化，油价{direction}", ["OPEC+", "原油库存", "地缘风险"]
+        if any(keyword in headline_text for keyword in ("hormuz", "航运", "disruption")):
+            reason, tags = f"霍尔木兹运输中断担忧压缩供应预期，推动油价{direction}", ["霍尔木兹", "供应中断", "地缘风险"]
+        elif any(keyword in headline_text for keyword in ("inventory", "库存")):
+            reason, tags = f"原油库存预期变化影响供需判断，油价{direction}", ["原油库存", "供需预期", "OPEC+"]
+        else:
+            reason, tags = f"供应风险与库存预期变化，令油价{direction}", ["OPEC+", "原油库存", "地缘风险"]
     evidence = headlines[0]["title"] if headlines else "当日公开市场信息"
-    detail = f"当日价格{direction} {abs(change):.2f}%。资讯焦点包括“{evidence}”，与价格方向共同指向上述可能驱动因素。"
-    return reason, detail, tags
+    source = headlines[0]["source"] if headlines else "公开资讯"
+    evidence_link = headlines[0]["link"] if headlines else ""
+    detail = f"当日价格{direction} {abs(change):.2f}%。可核对依据：{source} 报道“{evidence}”。该报道是上述归因的直接线索，而非对单一因果的确认。"
+    return reason, detail, tags, source, evidence_link
 
 
 def main() -> None:
@@ -108,7 +122,7 @@ def main() -> None:
         except (OSError, ET.ParseError):
             headlines = []
         value, change, trade_date, history, session = fetch_quote(ticker)
-        reason, detail, tags = explain(symbol, change, headlines)
+        reason, detail, tags, evidence_source, evidence_link = explain(symbol, change, headlines)
         markets.append({
             "symbol": symbol,
             "name": name,
@@ -119,6 +133,8 @@ def main() -> None:
             "reason": reason,
             "detail": detail,
             "tags": tags,
+            "evidenceSource": evidence_source,
+            "evidenceLink": evidence_link,
         })
         news_items.extend(headlines[:2])
         dates.append(trade_date)
