@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 ASSETS = (
     ("NASDAQ 100", "纳斯达克 100 指数", "^NDX", "Nasdaq 100 technology stocks Federal Reserve", "美股"),
-    ("NASDAQ", "纳斯达克综合指数", "^IXIC", "Nasdaq stock market Federal Reserve", "美股"),
+    ("VIX", "CBOE 波动率指数", "^VIX", "VIX volatility stock market risk", "避险"),
     ("S&P 500", "标普 500", "^GSPC", "S&P 500 US stock market economy", "美股"),
     ("GOLD", "COMEX 黄金期货", "GC=F", "gold price dollar Federal Reserve", "黄金"),
     ("WTI", "WTI 原油期货", "CL=F", "oil price OPEC inventory supply", "能源"),
@@ -118,6 +118,10 @@ def summarize_headline(symbol: str, headline: str) -> str:
     elif symbol == "WTI":
         if "hormuz" in text or "disruption" in text:
             return "报道指出霍尔木兹航运中断可能持续，市场因担忧原油运输受限而提高了即时供应风险的定价。"
+    if symbol == "VIX":
+        if "volatility" in text or "vix" in text:
+            return "市场新闻聚焦股市波动与避险需求的变化，投资者正在重新评估短期风险。"
+        return "市场新闻聚焦风险偏好与股市波动，VIX 用于衡量标普 500 期权隐含的预期波动。"
     if symbol in {"NASDAQ 100", "NASDAQ", "S&P 500"}:
         return "市场新闻聚焦美股风险偏好、宏观数据与企业盈利预期的变化。"
     if symbol == "GOLD":
@@ -128,7 +132,10 @@ def summarize_headline(symbol: str, headline: str) -> str:
 def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tuple[str, str, list[str], str, str]:
     direction = "走强" if change >= 0 else "承压"
     headline_text = " ".join(item["title"] for item in headlines).lower()
-    if symbol in {"NASDAQ 100", "NASDAQ", "S&P 500"}:
+    if symbol == "VIX":
+        reason = "市场避险需求升温，VIX 上升" if change >= 0 else "市场避险需求回落，VIX 下降"
+        tags = ["市场波动", "避险需求", "风险偏好"]
+    elif symbol in {"NASDAQ 100", "NASDAQ", "S&P 500"}:
         if any(keyword in headline_text for keyword in ("tech boost", "technology stocks", "ai", "科技股")):
             reason, tags = f"科技权重股表现变化，带动指数{direction}", ["科技权重", "企业盈利", "资金流向"]
         elif any(keyword in headline_text for keyword in ("rate hike bets retreat", "fed", "rate", "inflation", "利率", "通胀")):
@@ -167,6 +174,9 @@ def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tupl
     elif "企业盈利" in tags:
         mechanism = "财报和经营指引会直接改变市场对未来盈利的判断，进而影响估值和资金风险偏好。"
         watch = "关注重点公司的实际业绩、营收展望及市场对盈利预期的修正方向。"
+    elif "市场波动" in tags:
+        mechanism = "VIX 由标普 500 期权的隐含波动率计算得出；VIX 上升通常表示期权市场正在为更大的短期价格波动定价，并不等同于股市必然下跌。"
+        watch = "关注标普 500 的实际波动、期权隐含波动率期限结构，以及重大宏观事件前后的避险需求。"
     elif "美元指数" in tags:
         mechanism = "黄金以美元计价；美元走弱时，其他货币持有者的购买成本下降，同时实际利率预期也会影响无息黄金的吸引力。"
         watch = "关注美元指数、美国实际利率、联储政策预期和避险需求的同步变化。"
@@ -199,7 +209,7 @@ def main() -> None:
         markets.append({
             "symbol": symbol,
             "name": name,
-            "value": f"{value:,.2f}" if symbol in {"NASDAQ 100", "NASDAQ", "S&P 500"} else f"${value:,.2f}",
+            "value": f"{value:,.2f}" if symbol in {"NASDAQ 100", "VIX", "S&P 500"} else f"${value:,.2f}",
             "change": round(change, 2),
             "history": history,
             "session": session,
@@ -212,7 +222,7 @@ def main() -> None:
         news_items.extend(headlines[:2])
         dates.append(trade_date)
 
-    equity_change = sum(item["change"] for item in markets[:3]) / 3
+    equity_change = (markets[0]["change"] + markets[2]["change"]) / 2
     title = "风险偏好回升" if equity_change > 0.25 else "风险情绪趋弱" if equity_change < -0.25 else "市场情绪相对谨慎"
     payload = {
         "date": max(dates),
@@ -225,8 +235,8 @@ def main() -> None:
         "news": news_items[:8],
     }
     payload["pulse"]["summary"] = (
-        f"\u7eb3\u6307\u3001\u7eb3\u65af\u8fbe\u514b 100 \u4e0e\u6807\u666e\u5e73\u5747\u53d8\u52a8 {equity_change:+.2f}%\uff1b"
-        f"\u9ec4\u91d1 {markets[3]['change']:+.2f}%\uff0cWTI \u539f\u6cb9 {markets[4]['change']:+.2f}%\u3002"
+        f"\u7eb3\u65af\u8fbe\u514b 100 \u4e0e\u6807\u666e\u5e73\u5747\u53d8\u52a8 {equity_change:+.2f}%\uff1b"
+        f"VIX {markets[1]['change']:+.2f}%\uff0c\u9ec4\u91d1 {markets[3]['change']:+.2f}%\uff0cWTI \u539f\u6cb9 {markets[4]['change']:+.2f}%\u3002"
     )
     output = Path(__file__).resolve().parents[1] / "apps" / "dsa-web" / "public" / "market.json"
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
