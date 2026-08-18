@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis } from 'recharts';
 import { ArrowDownRight, ArrowUpRight, ExternalLink, RefreshCw, ShieldCheck } from 'lucide-react';
 import './PublicMarketPage.css';
@@ -71,7 +71,19 @@ function EvidenceLink({ market }: { market: PublicMarket }) {
 }
 
 function MarketDetail({ detail }: { detail: string }) {
-  return <div className="public-market-detail">{detail.split('\n').map((line) => <p key={line}>{line}</p>)}</div>;
+  return <div className="public-market-detail">{detail.split('\n').map((line, index) => {
+    const match = line.match(/^【([^】]+)】(.*)$/);
+    return <div key={`${line}-${index}`}><strong>{match?.[1] ?? '解读'}</strong><p>{match?.[2] ?? line}</p></div>;
+  })}</div>;
+}
+
+function AnalysisCard({ market, featured = false }: { market: PublicMarket; featured?: boolean }) {
+  return <article className={`public-analysis-card${featured ? ' is-featured' : ''}`}>
+    <div className="public-analysis-meta"><span>{market.symbol}</span><i>{market.analysisStatus ?? '等待更新'}</i></div>
+    <h3>{market.reason}</h3>
+    <MarketDetail detail={market.detail} />
+    <div className="public-analysis-footer"><div>{market.tags.map((tag) => <b key={tag}>{tag}</b>)}</div><EvidenceLink market={market} /></div>
+  </article>;
 }
 
 export default function PublicMarketPage() {
@@ -84,15 +96,34 @@ export default function PublicMarketPage() {
       .catch(() => setBrief(fallback))
       .finally(() => setLoading(false));
   }, []);
-  const equity = useMemo(() => brief.markets.filter((market) => market.symbol === 'NASDAQ 100' || market.symbol === 'S&P 500'), [brief.markets]);
-  const commodities = useMemo(() => brief.markets.filter((market) => market.symbol !== 'NASDAQ 100' && market.symbol !== 'S&P 500'), [brief.markets]);
-
   return <main className="public-market">
-    <header className="public-nav"><div className="public-brand"><span>DSA</span><strong>全球市场日报</strong></div><nav><a href="#overview">市场概览</a><a href="#analysis">原因分析</a><a href="#news">相关新闻</a></nav><div className="public-live"><RefreshCw size={13} className={loading ? 'spin' : ''} /> 每日自动更新</div></header>
-    <section className="public-hero"><div><p className="public-kicker">DAILY GLOBAL MARKET BRIEF · {brief.date}</p><h1>看见涨跌，<br /><em>更看懂背后的原因。</em></h1><p>每天追踪纳指、标普 500、黄金和原油，把分散的行情与新闻整理成一份清晰日报。</p></div><aside><span>今日市场脉搏</span><h2>{brief.pulse.title}</h2><p>{brief.pulse.summary}</p><small><ShieldCheck size={13} /> 基于公开信息的可能归因</small></aside></section>
-    <section className="public-section" id="overview"><div className="public-section-head"><div><span>01</span><h2>市场概览</h2></div><p>{brief.updatedAt}</p></div><div className="public-market-grid">{brief.markets.map((market) => <article key={market.symbol} className="public-market-card"><div className="public-card-top"><span>{market.symbol}</span><b className={market.change >= 0 ? 'is-up' : 'is-down'}>{market.change >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}{signed(market.change)}</b></div><h3>{market.value}</h3><p>{market.name} <i>{market.session ?? '最近日线'}</i></p><TrendChart market={market} /></article>)}</div></section>
-    <section className="public-section" id="analysis"><div className="public-section-head"><div><span>02</span><h2>今日解读</h2></div><p>当日新闻 × AI 实时生成 × 原文链接</p></div><div className="public-analysis"><article className="public-lead"><span>美股 · {equity[0]?.analysisStatus ?? '等待更新'}</span>{equity.map((item) => <div key={item.symbol}><h3>{item.name}：{item.reason}</h3><MarketDetail detail={item.detail} /><EvidenceLink market={item} /></div>)}<div>{Array.from(new Set(equity.flatMap((item) => item.tags))).slice(0, 4).map((tag) => <b key={tag}>{tag}</b>)}</div></article><div className="public-reasons">{commodities.map((item) => <article key={item.symbol}><span>{item.name} · {item.analysisStatus ?? '等待更新'}</span><h3>{item.reason}</h3><MarketDetail detail={item.detail} /><EvidenceLink market={item} /><div>{item.tags.map((tag) => <b key={tag}>{tag}</b>)}</div></article>)}</div></div><p className="public-caveat">解读由当次工作流根据最新行情、新闻标题及媒体公开摘要动态生成，不使用固定原因模板。内容是基于公开信息的可能归因，不代表已确认的单一因果关系，也不构成投资建议。</p></section>
-    <section className="public-section" id="news"><div className="public-section-head"><div><span>03</span><h2>相关新闻</h2></div><p>保留原始报道链接</p></div><div className="public-news">{brief.news.length ? brief.news.map((item, index) => <a href={item.link} target="_blank" rel="noreferrer" key={`${item.link}-${index}`}><time>{item.time}</time><div><span>{item.category} · {item.source}</span><h3>{item.title}</h3></div><ExternalLink size={17} /></a>) : <div className="public-empty">首次自动更新后显示相关新闻。</div>}</div></section>
-    <footer><strong>DSA 全球市场日报</strong><span>数据自动更新 · 信息仅供研究参考</span><a href="https://github.com/suze233/daily_stock_analysis" target="_blank" rel="noreferrer">查看源代码 <ExternalLink size={13} /></a></footer>
+    <header className="public-nav">
+      <div className="public-brand"><span>DSA</span><div><strong>全球市场日报</strong><small>GLOBAL MARKET BRIEF</small></div></div>
+      <nav><a href="#overview">市场概览</a><a href="#analysis">今日解读</a><a href="#news">相关新闻</a></nav>
+      <div className="public-live"><RefreshCw size={13} className={loading ? 'spin' : ''} /><span>每日自动更新</span></div>
+    </header>
+
+    <section className="public-hero">
+      <div className="public-hero-copy"><p className="public-kicker">{brief.date} · DAILY BRIEF</p><h1>今天的市场，<br /><em>一眼看清。</em></h1><p>聚合纳斯达克 100、VIX、标普 500、黄金与原油，结合当日新闻生成清晰、可核对的市场解读。</p><div className="public-update"><span className="public-status-dot" />{brief.updatedAt}</div></div>
+      <aside><div className="public-pulse-label"><span>今日市场脉搏</span><ShieldCheck size={16} /></div><h2>{brief.pulse.title}</h2><p>{brief.pulse.summary}</p><small>AI 实时生成 · 原文可追溯</small></aside>
+    </section>
+
+    <section className="public-section" id="overview">
+      <div className="public-section-head"><div><span>01</span><h2>市场概览</h2></div><p>最近交易日 · 五日趋势</p></div>
+      <div className="public-market-grid">{brief.markets.map((market, index) => <article key={market.symbol} className={`public-market-card${index === 0 ? ' is-primary' : ''}`}><div className="public-card-top"><div><span>{market.symbol}</span><small>{market.name}</small></div><b className={market.change >= 0 ? 'is-up' : 'is-down'}>{market.change >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}{signed(market.change)}</b></div><h3>{market.value}</h3><div className="public-session">{market.session ?? '最近日线'}</div><TrendChart market={market} /></article>)}</div>
+    </section>
+
+    <section className="public-section" id="analysis">
+      <div className="public-section-head"><div><span>02</span><h2>今日解读</h2></div><p>报道要点 · 市场影响 · 后续观察</p></div>
+      <div className="public-analysis">{brief.markets.map((market, index) => <AnalysisCard key={market.symbol} market={market} featured={index === 0} />)}</div>
+      <p className="public-caveat">解读由当次工作流根据最新行情、新闻与媒体公开摘要动态生成，不使用固定原因模板。内容是基于公开信息的可能归因，不代表已确认的单一因果关系，也不构成投资建议。</p>
+    </section>
+
+    <section className="public-section" id="news">
+      <div className="public-section-head"><div><span>03</span><h2>相关新闻</h2></div><p>点击查看媒体原文</p></div>
+      <div className="public-news">{brief.news.length ? brief.news.map((item, index) => <a href={item.link} target="_blank" rel="noreferrer" key={`${item.link}-${index}`}><div className="public-news-meta"><span>{item.category}</span><time>{item.time}</time></div><h3>{item.title}</h3><div className="public-news-source">{item.source}<ExternalLink size={15} /></div></a>) : <div className="public-empty">首次自动更新后显示相关新闻。</div>}</div>
+    </section>
+
+    <footer><div><strong>DSA 全球市场日报</strong><span>数据自动更新 · 信息仅供研究参考</span></div><a href="https://github.com/suze233/daily_stock_analysis" target="_blank" rel="noreferrer">查看源代码 <ExternalLink size={13} /></a></footer>
   </main>;
 }
