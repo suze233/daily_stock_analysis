@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [新增] 全球市场日报新增并首位展示纳斯达克 100 指数，自动抓取 Yahoo Finance `^NDX` 的行情与相关新闻。
+
 - [修复] 全球市场日报明确区分盘中快照与最近日线，并将黄金、原油标注为对应期货品种，避免将盘中行情误解为收盘价。
 - [新功能] 新增面向 GitHub Pages 的中文全球市场日报，每日自动展示纳指、标普 500、黄金和 WTI 原油的行情、五日趋势、相关新闻与可能原因。
 

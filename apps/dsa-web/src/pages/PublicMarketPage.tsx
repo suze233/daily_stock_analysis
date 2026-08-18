@@ -29,6 +29,7 @@ const fallback: PublicBrief = {
   updatedAt: '首次工作流运行后自动刷新',
   pulse: { title: '正在准备首份市场日报', summary: '行情、新闻与原因分析会在美股收盘后自动更新。' },
   markets: [
+    ['NASDAQ 100', '纳斯达克 100 指数', [72, 75, 73, 77, 80]],
     ['NASDAQ', '纳斯达克综合指数', [66, 68, 67, 71, 74]],
     ['S&P 500', '标普 500', [58, 60, 59, 62, 64]],
     ['GOLD', '纽约黄金', [72, 70, 71, 68, 67]],
@@ -71,8 +72,8 @@ export default function PublicMarketPage() {
       .catch(() => setBrief(fallback))
       .finally(() => setLoading(false));
   }, []);
-  const equity = useMemo(() => brief.markets.slice(0, 2), [brief.markets]);
-  const commodities = useMemo(() => brief.markets.slice(2), [brief.markets]);
+  const equity = useMemo(() => brief.markets.slice(0, 3), [brief.markets]);
+  const commodities = useMemo(() => brief.markets.slice(3), [brief.markets]);
 
   return <main className="public-market">
     <header className="public-nav"><div className="public-brand"><span>DSA</span><strong>全球市场日报</strong></div><nav><a href="#overview">市场概览</a><a href="#analysis">原因分析</a><a href="#news">相关新闻</a></nav><div className="public-live"><RefreshCw size={13} className={loading ? 'spin' : ''} /> 每日自动更新</div></header>

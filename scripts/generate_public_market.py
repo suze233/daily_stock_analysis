@@ -12,6 +12,7 @@ from pathlib import Path
 from time import time
 
 ASSETS = (
+    ("NASDAQ 100", "纳斯达克 100 指数", "^NDX", "Nasdaq 100 technology stocks Federal Reserve", "美股"),
     ("NASDAQ", "纳斯达克综合指数", "^IXIC", "Nasdaq stock market Federal Reserve", "美股"),
     ("S&P 500", "标普 500", "^GSPC", "S&P 500 US stock market economy", "美股"),
     ("GOLD", "COMEX 黄金期货", "GC=F", "gold price dollar Federal Reserve", "黄金"),
@@ -71,7 +72,7 @@ def fetch_news(query: str, category: str) -> list[dict[str, str]]:
 def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tuple[str, str, list[str]]:
     direction = "走强" if change >= 0 else "承压"
     headline_text = " ".join(item["title"] for item in headlines).lower()
-    if symbol in {"NASDAQ", "S&P 500"}:
+    if symbol in {"NASDAQ 100", "NASDAQ", "S&P 500"}:
         if any(keyword in headline_text for keyword in ("fed", "rate", "inflation", "利率", "通胀")):
             reason, tags = f"利率预期变化，指数{direction}", ["利率预期", "宏观数据", "风险偏好"]
         elif any(keyword in headline_text for keyword in ("earnings", "tech", "ai", "财报", "科技")):
@@ -101,7 +102,7 @@ def main() -> None:
         markets.append({
             "symbol": symbol,
             "name": name,
-            "value": f"{value:,.2f}" if symbol in {"NASDAQ", "S&P 500"} else f"${value:,.2f}",
+            "value": f"{value:,.2f}" if symbol in {"NASDAQ 100", "NASDAQ", "S&P 500"} else f"${value:,.2f}",
             "change": round(change, 2),
             "history": history,
             "session": session,
@@ -112,7 +113,7 @@ def main() -> None:
         news_items.extend(headlines[:2])
         dates.append(trade_date)
 
-    equity_change = sum(item["change"] for item in markets[:2]) / 2
+    equity_change = sum(item["change"] for item in markets[:3]) / 3
     title = "风险偏好回升" if equity_change > 0.25 else "风险情绪趋弱" if equity_change < -0.25 else "市场情绪相对谨慎"
     payload = {
         "date": max(dates),
@@ -124,6 +125,10 @@ def main() -> None:
         "markets": markets,
         "news": news_items[:8],
     }
+    payload["pulse"]["summary"] = (
+        f"\u7eb3\u6307\u3001\u7eb3\u65af\u8fbe\u514b 100 \u4e0e\u6807\u666e\u5e73\u5747\u53d8\u52a8 {equity_change:+.2f}%\uff1b"
+        f"\u9ec4\u91d1 {markets[3]['change']:+.2f}%\uff0cWTI \u539f\u6cb9 {markets[4]['change']:+.2f}%\u3002"
+    )
     output = Path(__file__).resolve().parents[1] / "apps" / "dsa-web" / "public" / "market.json"
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Generated {output} for {payload['date']}")
