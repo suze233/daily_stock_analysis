@@ -79,6 +79,27 @@ def fetch_news(query: str, category: str) -> list[dict[str, str]]:
     return items
 
 
+def fetch_article_summary(link: str) -> str:
+    """Return a short, source-provided description from the linked article when available."""
+    if not link:
+        return ""
+    try:
+        page = request_bytes(link).decode("utf-8", errors="ignore")
+    except OSError:
+        return ""
+    for pattern in (
+        r'<meta[^>]+property=["\']og:description["\'][^>]+content=["\']([^"\']+)',
+        r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']+)',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:description["\']',
+    ):
+        match = re.search(pattern, page, flags=re.IGNORECASE)
+        if match:
+            summary = re.sub(r"\s+", " ", match.group(1)).strip()
+            if summary:
+                return summary[:360]
+    return ""
+
+
 def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tuple[str, str, list[str], str, str]:
     direction = "走强" if change >= 0 else "承压"
     headline_text = " ".join(item["title"] for item in headlines).lower()
@@ -108,7 +129,12 @@ def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tupl
     evidence = headlines[0]["title"] if headlines else "当日公开市场信息"
     source = headlines[0]["source"] if headlines else "公开资讯"
     evidence_link = headlines[0]["link"] if headlines else ""
-    detail = f"当日价格{direction} {abs(change):.2f}%。可核对依据：{source} 报道“{evidence}”。该报道是上述归因的直接线索，而非对单一因果的确认。"
+    source_summary = headlines[0].get("summary", "") if headlines else ""
+    detail = (
+        f"报道要点：{source_summary}"
+        if source_summary
+        else f"报道标题：{evidence}。该来源未提供可公开提取的摘要，请打开原文查看完整内容。"
+    )
     return reason, detail, tags, source, evidence_link
 
 
@@ -121,6 +147,8 @@ def main() -> None:
             headlines = fetch_news(query, category)
         except (OSError, ET.ParseError):
             headlines = []
+        if headlines:
+            headlines[0]["summary"] = fetch_article_summary(headlines[0]["link"])
         value, change, trade_date, history, session = fetch_quote(ticker)
         reason, detail, tags, evidence_source, evidence_link = explain(symbol, change, headlines)
         markets.append({
