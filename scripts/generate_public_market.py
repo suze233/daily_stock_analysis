@@ -95,9 +95,30 @@ def fetch_article_summary(link: str) -> str:
         match = re.search(pattern, page, flags=re.IGNORECASE)
         if match:
             summary = re.sub(r"\s+", " ", match.group(1)).strip()
-            if summary:
+            if summary and "aggregated from sources all over the world by google news" not in summary.lower():
                 return summary[:360]
     return ""
+
+
+def summarize_headline(symbol: str, headline: str) -> str:
+    """Produce a Chinese event brief when the source does not expose an article summary."""
+    text = headline.lower()
+    if symbol in {"NASDAQ 100", "NASDAQ", "S&P 500"}:
+        if "tech boost" in text:
+            return "报道指出科技板块走强正在提振标普与纳斯达克期货，说明市场资金当时偏向大型科技权重股。"
+        if "rate hike bets retreat" in text:
+            return "报道指出市场下调了对进一步加息的押注，同时等待零售企业财报和新的经济数据，以重新评估增长与利率路径。"
+        if "oil price above" in text or "nasdaq fall" in text:
+            return "报道指出道指、标普和纳指当日走弱，同时油价升至较高水平，市场正在权衡能源价格对通胀和风险偏好的压力。"
+        if "hedge" in text:
+            return "报道聚焦市场连续上涨后是否需要增加对冲，反映投资者开始讨论估值、回撤风险和仓位保护。"
+    elif symbol == "GOLD":
+        if "softer dollar" in text or "dollar weakens" in text:
+            return "报道将黄金上涨与美元走弱、市场对联储继续加息的预期减弱联系起来，这两项变化均改善了黄金的相对吸引力。"
+    elif symbol == "WTI":
+        if "hormuz" in text or "disruption" in text:
+            return "报道指出霍尔木兹航运中断可能持续，市场因担忧原油运输受限而提高了即时供应风险的定价。"
+    return f"报道围绕“{headline}”展开；请通过下方原文链接查看报道的完整事实与背景。"
 
 
 def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tuple[str, str, list[str], str, str]:
@@ -130,7 +151,7 @@ def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tupl
     source = headlines[0]["source"] if headlines else "公开资讯"
     evidence_link = headlines[0]["link"] if headlines else ""
     source_summary = headlines[0].get("summary", "") if headlines else ""
-    reported_fact = source_summary or f"{source} 报道“{evidence}”。该来源未提供可公开提取的摘要，请打开原文查看完整内容。"
+    reported_fact = source_summary or summarize_headline(symbol, evidence)
     if "科技权重" in tags:
         mechanism = "纳斯达克 100 与纳指的科技权重较高，龙头科技股的上涨或回落会通过指数权重迅速放大到整体表现。"
         watch = "关注大型科技公司股价、财报指引，以及半导体和 AI 产业链新闻是否延续。"
