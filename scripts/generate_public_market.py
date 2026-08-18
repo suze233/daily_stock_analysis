@@ -130,11 +130,29 @@ def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tupl
     source = headlines[0]["source"] if headlines else "公开资讯"
     evidence_link = headlines[0]["link"] if headlines else ""
     source_summary = headlines[0].get("summary", "") if headlines else ""
-    detail = (
-        f"报道要点：{source_summary}"
-        if source_summary
-        else f"报道标题：{evidence}。该来源未提供可公开提取的摘要，请打开原文查看完整内容。"
-    )
+    reported_fact = source_summary or f"{source} 报道“{evidence}”。该来源未提供可公开提取的摘要，请打开原文查看完整内容。"
+    if "科技权重" in tags:
+        mechanism = "纳斯达克 100 与纳指的科技权重较高，龙头科技股的上涨或回落会通过指数权重迅速放大到整体表现。"
+        watch = "关注大型科技公司股价、财报指引，以及半导体和 AI 产业链新闻是否延续。"
+    elif "联储政策" in tags:
+        mechanism = "利率预期会改变未来现金流的折现率；对估值更敏感的成长股通常会比大盘对这一变化反应更强。"
+        watch = "关注联储官员讲话、通胀与就业数据，以及利率期货对下一次会议的定价变化。"
+    elif "企业盈利" in tags:
+        mechanism = "财报和经营指引会直接改变市场对未来盈利的判断，进而影响估值和资金风险偏好。"
+        watch = "关注重点公司的实际业绩、营收展望及市场对盈利预期的修正方向。"
+    elif "美元指数" in tags:
+        mechanism = "黄金以美元计价；美元走弱时，其他货币持有者的购买成本下降，同时实际利率预期也会影响无息黄金的吸引力。"
+        watch = "关注美元指数、美国实际利率、联储政策预期和避险需求的同步变化。"
+    elif "霍尔木兹" in tags:
+        mechanism = "霍尔木兹海峡是重要原油运输通道；运输受阻或延误会抬升即时供应风险溢价，并推高近月油价。"
+        watch = "关注航运通行情况、产油国表态、库存数据以及原油期货近远月价差。"
+    elif "原油库存" in tags:
+        mechanism = "库存数据反映短期供需是否偏紧；低于预期的库存通常支持油价，高于预期则可能压制油价。"
+        watch = "关注 EIA/API 库存、炼厂开工率、OPEC+ 供应政策及全球需求数据。"
+    else:
+        mechanism = "市场价格通常由资金风险偏好、宏观预期与相关资产联动共同决定，单条新闻不能解释全部涨跌。"
+        watch = "关注后续宏观数据、利率和美元走势，以及同一主题是否被多家可靠媒体持续确认。"
+    detail = f"【报道要点】{reported_fact}\n【影响机制】{mechanism}\n【后续观察】{watch}"
     return reason, detail, tags, source, evidence_link
 
 
