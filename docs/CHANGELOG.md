@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [修复] 自定义 OpenAI 兼容接口未指定模型时自动读取 `/models` 选择可用聊天模型，并对 429/5xx 临时错误进行有限重试。
 - [修复] GitHub Models 已进入退役停机阶段，全球市场日报改用仓库已有的 OpenAI 兼容或 DeepSeek Secret 动态生成解读；未配置时不再回退到静态模板。
 - [改进] 全球市场日报在每次工作流中读取当日行情、新闻与媒体公开摘要，动态生成报道要点、市场影响和后续观察；生成失败时明确降级，不再使用固定分析模板。
 - [改进] 全球市场日报以 VIX（CBOE 波动率指数）替换纳斯达克综合指数，并为 VIX 提供独立的避险与波动率解读。

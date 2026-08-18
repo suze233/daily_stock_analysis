@@ -8,10 +8,11 @@ import re
 import html
 import urllib.parse
 import urllib.request
+import urllib.error
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
-from time import time
+from time import sleep, time
 from zoneinfo import ZoneInfo
 
 try:
@@ -125,13 +126,44 @@ def enrich_news_item(item: dict[str, str]) -> dict[str, str]:
     return enriched
 
 
+def discover_openai_model(base_url: str, token: str) -> str:
+    configured = os.environ.get("OPENAI_MODEL", "").strip()
+    if configured:
+        return configured
+    request = urllib.request.Request(
+        f"{base_url}/models",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read())
+        model_ids = [item.get("id", "") for item in payload.get("data", []) if item.get("id")]
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+        print(f"Model discovery unavailable: {error}")
+        model_ids = []
+    priorities = ("gpt-4o-mini", "gpt-4.1-mini", "deepseek-chat", "deepseek-v3", "qwen")
+    for preferred in priorities:
+        match = next((model_id for model_id in model_ids if preferred in model_id.lower()), None)
+        if match:
+            print(f"Auto-selected market analysis model: {match}")
+            return match
+    usable = next((
+        model_id for model_id in model_ids
+        if not any(word in model_id.lower() for word in ("embedding", "image", "audio", "tts", "rerank"))
+    ), None)
+    if usable:
+        print(f"Auto-selected market analysis model: {usable}")
+        return usable
+    return "gpt-4o-mini"
+
+
 def generate_ai_analysis(markets: list[dict], news_by_symbol: dict[str, list[dict[str, str]]]) -> dict[str, dict]:
     openai_key = os.environ.get("OPENAI_API_KEY")
     deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
     if openai_key:
         token = openai_key
         base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-        model = os.environ.get("OPENAI_MODEL") or "gpt-4.1-mini"
+        model = discover_openai_model(base_url, token)
     elif deepseek_key:
         token = deepseek_key
         base_url = "https://api.deepseek.com"
@@ -186,17 +218,25 @@ def generate_ai_analysis(markets: list[dict], news_by_symbol: dict[str, list[dic
         },
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            result = json.loads(response.read())
-        content = result["choices"][0]["message"]["content"].strip()
-        if content.startswith("```"):
-            content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE)
-        parsed = json.loads(content)
-        return {item["symbol"]: item for item in parsed.get("markets", []) if item.get("symbol")}
-    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
-        print(f"AI analysis unavailable: {error}")
-        return {}
+    for attempt, delay in enumerate((0, 5, 15), start=1):
+        if delay:
+            sleep(delay)
+        try:
+            with urllib.request.urlopen(request, timeout=90) as response:
+                result = json.loads(response.read())
+            content = result["choices"][0]["message"]["content"].strip()
+            if content.startswith("```"):
+                content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE)
+            parsed = json.loads(content)
+            return {item["symbol"]: item for item in parsed.get("markets", []) if item.get("symbol")}
+        except urllib.error.HTTPError as error:
+            response_body = error.read().decode("utf-8", errors="ignore")[:500]
+            print(f"AI analysis attempt {attempt} failed: HTTP {error.code} {response_body}")
+            if error.code not in {429, 500, 502, 503, 504}:
+                break
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            print(f"AI analysis attempt {attempt} failed: {error}")
+    return {}
 
 
 def main() -> None:
