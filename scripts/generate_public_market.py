@@ -192,9 +192,12 @@ def generate_ai_analysis(markets: list[dict], news_by_symbol: dict[str, list[dic
         "根据以下刚抓取的行情、新闻标题与媒体公开摘要，为每个品种生成实时中文解读。只使用输入中的事实，不补造新闻内容，"
         "不要复述或展示新闻标题。每项返回：reason（一句话具体原因）、brief（两句内简要总结新闻内容）、"
         "impact（说明为何影响该品种及方向）、watch（后续关注事项）、tags（2到4个短标签）。"
+        "另外返回 focusSectors，列出2到4个后续可关注的美股板块；每项包含name（简短板块名）和reason（关注逻辑，限一句话）。"
+        "板块必须由本次输入中的行情或新闻支持，不能写成投资建议；证据不足时返回空数组。"
         "若证据不足，明确写‘现有新闻不足以确认具体原因’，不得套用通用模板。"
         "VIX 上涨表示预期波动扩大，不要把它当普通股指。输出严格 JSON："
-        '{"markets":[{"symbol":"...","reason":"...","brief":"...","impact":"...","watch":"...","tags":["..."]}]}\n'
+        '{"markets":[{"symbol":"...","reason":"...","brief":"...","impact":"...","watch":"...","tags":["..."]}],'
+        '"focusSectors":[{"name":"...","reason":"..."}]}\n'
         f"输入数据：{json.dumps(context, ensure_ascii=False)}"
     )
     body = json.dumps({
@@ -228,7 +231,9 @@ def generate_ai_analysis(markets: list[dict], news_by_symbol: dict[str, list[dic
             if content.startswith("```"):
                 content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE)
             parsed = json.loads(content)
-            return {item["symbol"]: item for item in parsed.get("markets", []) if item.get("symbol")}
+            analysis = {item["symbol"]: item for item in parsed.get("markets", []) if item.get("symbol")}
+            analysis["__focusSectors__"] = parsed.get("focusSectors", [])
+            return analysis
         except urllib.error.HTTPError as error:
             response_body = error.read().decode("utf-8", errors="ignore")[:500]
             print(f"AI analysis attempt {attempt} failed: HTTP {error.code} {response_body}")
@@ -263,6 +268,11 @@ def main() -> None:
         dates.append(trade_date)
 
     ai_analysis = generate_ai_analysis(markets, news_by_symbol)
+    focus_sectors = [
+        {"name": str(item.get("name", "")).strip(), "reason": str(item.get("reason", "")).strip()}
+        for item in ai_analysis.get("__focusSectors__", [])[:4]
+        if isinstance(item, dict) and item.get("name") and item.get("reason")
+    ]
     for market in markets:
         analysis = ai_analysis.get(market["symbol"], {})
         headlines = news_by_symbol.get(market["symbol"], [])
@@ -297,6 +307,7 @@ def main() -> None:
         "pulse": {
             "title": title,
             "summary": f"纳指与标普平均变动 {equity_change:+.2f}%；黄金 {markets[2]['change']:+.2f}%，WTI 原油 {markets[3]['change']:+.2f}%。",
+            "focusSectors": focus_sectors,
         },
         "markets": markets,
         "news": news_items[:8],

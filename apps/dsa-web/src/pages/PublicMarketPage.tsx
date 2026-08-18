@@ -22,7 +22,7 @@ type PublicNews = { title: string; link: string; source: string; time: string; c
 type PublicBrief = {
   date: string;
   updatedAt: string;
-  pulse: { title: string; summary: string };
+  pulse: { title: string; summary: string; focusSectors?: { name: string; reason: string }[] };
   markets: PublicMarket[];
   news: PublicNews[];
 };
@@ -105,7 +105,7 @@ export default function PublicMarketPage() {
 
     <section className="public-hero">
       <div className="public-hero-copy"><p className="public-kicker">{brief.date} · DAILY BRIEF</p><h1>今天的市场，<br /><em>一眼看清。</em></h1><p>聚合纳斯达克 100、VIX、标普 500、黄金与原油，结合当日新闻生成清晰、可核对的市场解读。</p><div className="public-update"><span className="public-status-dot" />{brief.updatedAt}</div></div>
-      <aside><div className="public-pulse-label"><span>今日市场脉搏</span><ShieldCheck size={16} /></div><h2>{brief.pulse.title}</h2><p>{brief.pulse.summary}</p><small>AI 实时生成 · 原文可追溯</small></aside>
+      <aside><div className="public-pulse-label"><span>今日市场脉搏</span><ShieldCheck size={16} /></div><h2>{brief.pulse.title}</h2><p>{brief.pulse.summary}</p>{brief.pulse.focusSectors?.length ? <div className="public-focus-sectors"><strong>后续可关注板块</strong>{brief.pulse.focusSectors.map((sector) => <div key={sector.name}><b>{sector.name}</b><span>{sector.reason}</span></div>)}</div> : null}<small>AI 实时生成 · 原文可追溯</small></aside>
     </section>
 
     <section className="public-section" id="overview">
