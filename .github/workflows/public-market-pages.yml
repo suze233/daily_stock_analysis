@@ -3,7 +3,7 @@ name: Public Market Daily Pages
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 22 * * 1-5"
+    - cron: "0 0 * * 2-6"
   push:
     branches: [main]
     paths:

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [改进] GitHub Pages 全球市场日报调整为北京时间周二至周六 08:00 自动更新，对应美股周一至周五收盘后的数据。
+
 - [改进] 重构全球市场日报视觉布局：五项行情采用均衡卡片网格，今日解读按品种独立呈现报道要点、市场影响和后续观察，新闻改为双栏卡片，并优化平板与手机响应式布局。
 - [修复] 自定义 OpenAI 兼容接口未指定模型时自动读取 `/models` 选择可用聊天模型，并对 429/5xx 临时错误进行有限重试。
 - [修复] GitHub Models 已进入退役停机阶段，全球市场日报改用仓库已有的 OpenAI 兼容或 DeepSeek Secret 动态生成解读；未配置时不再回退到静态模板。

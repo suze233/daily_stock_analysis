@@ -6,7 +6,7 @@
 
 ## 自动更新
 
-工作流 `.github/workflows/public-market-pages.yml` 在工作日 UTC 22:30（北京时间次日 06:30）运行，也支持手动触发。它会：
+工作流 `.github/workflows/public-market-pages.yml` 在 UTC 周二至周六 00:00（北京时间周二至周六 08:00）运行，对应美股周一至周五交易日收盘后的日报，也支持手动触发。它会：
 
 1. 运行 `scripts/generate_public_market.py` 获取公开行情与新闻；
 2. 生成 `apps/dsa-web/public/market.json`；
