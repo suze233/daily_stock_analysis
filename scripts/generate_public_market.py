@@ -118,7 +118,11 @@ def summarize_headline(symbol: str, headline: str) -> str:
     elif symbol == "WTI":
         if "hormuz" in text or "disruption" in text:
             return "报道指出霍尔木兹航运中断可能持续，市场因担忧原油运输受限而提高了即时供应风险的定价。"
-    return f"报道围绕“{headline}”展开；请通过下方原文链接查看报道的完整事实与背景。"
+    if symbol in {"NASDAQ 100", "NASDAQ", "S&P 500"}:
+        return "市场新闻聚焦美股风险偏好、宏观数据与企业盈利预期的变化。"
+    if symbol == "GOLD":
+        return "市场新闻聚焦美元、利率预期和避险需求对黄金的共同影响。"
+    return "市场新闻聚焦原油供应、运输风险和库存预期的变化。"
 
 
 def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tuple[str, str, list[str], str, str]:
@@ -151,7 +155,9 @@ def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tupl
     source = headlines[0]["source"] if headlines else "公开资讯"
     evidence_link = headlines[0]["link"] if headlines else ""
     source_summary = headlines[0].get("summary", "") if headlines else ""
-    reported_fact = source_summary or summarize_headline(symbol, evidence)
+    # Google News and many publishers do not provide a reliably reusable article
+    # synopsis. Use a concise Chinese event brief instead of echoing headlines.
+    reported_fact = summarize_headline(symbol, evidence)
     if "科技权重" in tags:
         mechanism = "纳斯达克 100 与纳指的科技权重较高，龙头科技股的上涨或回落会通过指数权重迅速放大到整体表现。"
         watch = "关注大型科技公司股价、财报指引，以及半导体和 AI 产业链新闻是否延续。"
@@ -173,7 +179,7 @@ def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tupl
     else:
         mechanism = "市场价格通常由资金风险偏好、宏观预期与相关资产联动共同决定，单条新闻不能解释全部涨跌。"
         watch = "关注后续宏观数据、利率和美元走势，以及同一主题是否被多家可靠媒体持续确认。"
-    detail = f"【报道要点】{reported_fact}\n【影响机制】{mechanism}\n【后续观察】{watch}"
+    detail = f"【报道要点】{reported_fact}\n【市场影响】{mechanism}\n【后续观察】{watch}"
     return reason, detail, tags, source, evidence_link
 
 
