@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  models: read
   pages: write
   id-token: write
 
@@ -31,7 +32,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install news resolver
+        run: pip install googlenewsdecoder==0.1.7
       - name: Generate daily market brief
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MARKET_AI_MODEL: openai/gpt-4.1
         run: python scripts/generate_public_market.py
       - uses: actions/setup-node@v4
         with:

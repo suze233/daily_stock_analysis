@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import html
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -11,6 +13,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from time import time
 from zoneinfo import ZoneInfo
+
+try:
+    from googlenewsdecoder import gnewsdecoder
+except ImportError:  # Local fallback; GitHub Actions installs the resolver.
+    gnewsdecoder = None
 
 ASSETS = (
     ("NASDAQ 100", "纳斯达克 100 指数", "^NDX", "Nasdaq 100 technology stocks Federal Reserve", "美股"),
@@ -79,12 +86,11 @@ def fetch_news(query: str, category: str) -> list[dict[str, str]]:
     return items
 
 
-def fetch_article_summary(link: str) -> str:
-    """Return a short, source-provided description from the linked article when available."""
-    if not link:
+def fetch_meta_summary(url: str) -> str:
+    if not url:
         return ""
     try:
-        page = request_bytes(link).decode("utf-8", errors="ignore")
+        page = request_bytes(url).decode("utf-8", errors="ignore")
     except OSError:
         return ""
     for pattern in (
@@ -94,118 +100,106 @@ def fetch_article_summary(link: str) -> str:
     ):
         match = re.search(pattern, page, flags=re.IGNORECASE)
         if match:
-            summary = re.sub(r"\s+", " ", match.group(1)).strip()
+            summary = re.sub(r"\s+", " ", html.unescape(match.group(1))).strip()
             if summary and "aggregated from sources all over the world by google news" not in summary.lower():
-                return summary[:360]
+                return summary[:600]
     return ""
 
 
-def summarize_headline(symbol: str, headline: str) -> str:
-    """Produce a Chinese event brief when the source does not expose an article summary."""
-    text = headline.lower()
-    if symbol in {"NASDAQ 100", "NASDAQ", "S&P 500"}:
-        if "tech boost" in text:
-            return "报道指出科技板块走强正在提振标普与纳斯达克期货，说明市场资金当时偏向大型科技权重股。"
-        if "rate hike bets retreat" in text:
-            return "报道指出市场下调了对进一步加息的押注，同时等待零售企业财报和新的经济数据，以重新评估增长与利率路径。"
-        if "oil price above" in text or "nasdaq fall" in text:
-            return "报道指出道指、标普和纳指当日走弱，同时油价升至较高水平，市场正在权衡能源价格对通胀和风险偏好的压力。"
-        if "hedge" in text:
-            return "报道聚焦市场连续上涨后是否需要增加对冲，反映投资者开始讨论估值、回撤风险和仓位保护。"
-    elif symbol == "GOLD":
-        if "softer dollar" in text or "dollar weakens" in text:
-            return "报道将黄金上涨与美元走弱、市场对联储继续加息的预期减弱联系起来，这两项变化均改善了黄金的相对吸引力。"
-    elif symbol == "WTI":
-        if "hormuz" in text or "disruption" in text:
-            return "报道指出霍尔木兹航运中断可能持续，市场因担忧原油运输受限而提高了即时供应风险的定价。"
-    if symbol == "VIX":
-        if "volatility" in text or "vix" in text:
-            return "市场新闻聚焦股市波动与避险需求的变化，投资者正在重新评估短期风险。"
-        return "市场新闻聚焦风险偏好与股市波动，VIX 用于衡量标普 500 期权隐含的预期波动。"
-    if symbol in {"NASDAQ 100", "NASDAQ", "S&P 500"}:
-        return "市场新闻聚焦美股风险偏好、宏观数据与企业盈利预期的变化。"
-    if symbol == "GOLD":
-        return "市场新闻聚焦美元、利率预期和避险需求对黄金的共同影响。"
-    return "市场新闻聚焦原油供应、运输风险和库存预期的变化。"
+def enrich_news_item(item: dict[str, str]) -> dict[str, str]:
+    enriched = dict(item)
+    if gnewsdecoder is None:
+        enriched["summary"] = ""
+        return enriched
+    try:
+        decoded = gnewsdecoder(item["link"], interval=0)
+        original_url = decoded.get("decoded_url", "") if decoded.get("status") else ""
+    except Exception as error:
+        print(f"News URL resolution failed for {item['source']}: {error}")
+        original_url = ""
+    if original_url:
+        enriched["link"] = original_url
+        enriched["summary"] = fetch_meta_summary(original_url)
+    else:
+        enriched["summary"] = ""
+    return enriched
 
 
-def explain(symbol: str, change: float, headlines: list[dict[str, str]]) -> tuple[str, str, list[str], str, str]:
-    direction = "走强" if change >= 0 else "承压"
-    headline_text = " ".join(item["title"] for item in headlines).lower()
-    if symbol == "VIX":
-        reason = "市场避险需求升温，VIX 上升" if change >= 0 else "市场避险需求回落，VIX 下降"
-        tags = ["市场波动", "避险需求", "风险偏好"]
-    elif symbol in {"NASDAQ 100", "NASDAQ", "S&P 500"}:
-        if any(keyword in headline_text for keyword in ("tech boost", "technology stocks", "ai", "科技股")):
-            reason, tags = f"科技权重股表现变化，带动指数{direction}", ["科技权重", "企业盈利", "资金流向"]
-        elif any(keyword in headline_text for keyword in ("rate hike bets retreat", "fed", "rate", "inflation", "利率", "通胀")):
-            reason, tags = f"联储利率预期变化，影响成长股估值，指数{direction}", ["联储政策", "利率预期", "成长股估值"]
-        elif any(keyword in headline_text for keyword in ("earnings", "retail earnings", "财报")):
-            reason, tags = f"企业财报预期变化，令指数{direction}", ["企业盈利", "业绩预期", "风险偏好"]
-        else:
-            reason, tags = f"当日美股资金风险偏好变化，令指数{direction}", ["市场情绪", "资金流向", "宏观预期"]
-    elif symbol == "GOLD":
-        if any(keyword in headline_text for keyword in ("softer dollar", "dollar weakens", "美元走弱")):
-            reason, tags = f"美元走弱降低非美元买入成本，推动黄金{direction}", ["美元指数", "实际利率", "避险需求"]
-        elif any(keyword in headline_text for keyword in ("rate", "fed", "利率")):
-            reason, tags = f"利率预期回落，降低持有黄金的机会成本，黄金{direction}", ["实际利率", "联储政策", "避险需求"]
-        else:
-            reason, tags = f"避险需求与美元变化共同影响黄金{direction}", ["美元指数", "实际利率", "避险需求"]
-    else:
-        if any(keyword in headline_text for keyword in ("hormuz", "航运", "disruption")):
-            reason, tags = f"霍尔木兹运输中断担忧压缩供应预期，推动油价{direction}", ["霍尔木兹", "供应中断", "地缘风险"]
-        elif any(keyword in headline_text for keyword in ("inventory", "库存")):
-            reason, tags = f"原油库存预期变化影响供需判断，油价{direction}", ["原油库存", "供需预期", "OPEC+"]
-        else:
-            reason, tags = f"供应风险与库存预期变化，令油价{direction}", ["OPEC+", "原油库存", "地缘风险"]
-    evidence = headlines[0]["title"] if headlines else "当日公开市场信息"
-    source = headlines[0]["source"] if headlines else "公开资讯"
-    evidence_link = headlines[0]["link"] if headlines else ""
-    source_summary = headlines[0].get("summary", "") if headlines else ""
-    # Google News and many publishers do not provide a reliably reusable article
-    # synopsis. Use a concise Chinese event brief instead of echoing headlines.
-    reported_fact = summarize_headline(symbol, evidence)
-    if "科技权重" in tags:
-        mechanism = "纳斯达克 100 与纳指的科技权重较高，龙头科技股的上涨或回落会通过指数权重迅速放大到整体表现。"
-        watch = "关注大型科技公司股价、财报指引，以及半导体和 AI 产业链新闻是否延续。"
-    elif "联储政策" in tags:
-        mechanism = "利率预期会改变未来现金流的折现率；对估值更敏感的成长股通常会比大盘对这一变化反应更强。"
-        watch = "关注联储官员讲话、通胀与就业数据，以及利率期货对下一次会议的定价变化。"
-    elif "企业盈利" in tags:
-        mechanism = "财报和经营指引会直接改变市场对未来盈利的判断，进而影响估值和资金风险偏好。"
-        watch = "关注重点公司的实际业绩、营收展望及市场对盈利预期的修正方向。"
-    elif "市场波动" in tags:
-        mechanism = "VIX 由标普 500 期权的隐含波动率计算得出；VIX 上升通常表示期权市场正在为更大的短期价格波动定价，并不等同于股市必然下跌。"
-        watch = "关注标普 500 的实际波动、期权隐含波动率期限结构，以及重大宏观事件前后的避险需求。"
-    elif "美元指数" in tags:
-        mechanism = "黄金以美元计价；美元走弱时，其他货币持有者的购买成本下降，同时实际利率预期也会影响无息黄金的吸引力。"
-        watch = "关注美元指数、美国实际利率、联储政策预期和避险需求的同步变化。"
-    elif "霍尔木兹" in tags:
-        mechanism = "霍尔木兹海峡是重要原油运输通道；运输受阻或延误会抬升即时供应风险溢价，并推高近月油价。"
-        watch = "关注航运通行情况、产油国表态、库存数据以及原油期货近远月价差。"
-    elif "原油库存" in tags:
-        mechanism = "库存数据反映短期供需是否偏紧；低于预期的库存通常支持油价，高于预期则可能压制油价。"
-        watch = "关注 EIA/API 库存、炼厂开工率、OPEC+ 供应政策及全球需求数据。"
-    else:
-        mechanism = "市场价格通常由资金风险偏好、宏观预期与相关资产联动共同决定，单条新闻不能解释全部涨跌。"
-        watch = "关注后续宏观数据、利率和美元走势，以及同一主题是否被多家可靠媒体持续确认。"
-    detail = f"【报道要点】{reported_fact}\n【市场影响】{mechanism}\n【后续观察】{watch}"
-    return reason, detail, tags, source, evidence_link
+def generate_ai_analysis(markets: list[dict], news_by_symbol: dict[str, list[dict[str, str]]]) -> dict[str, dict]:
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("MARKET_AI_TOKEN")
+    if not token:
+        return {}
+    model = os.environ.get("MARKET_AI_MODEL", "openai/gpt-4.1")
+    context = [
+        {
+            "symbol": market["symbol"],
+            "name": market["name"],
+            "change": market["change"],
+            "news": [
+                {
+                    "title": item["title"],
+                    "source": item["source"],
+                    "time": item["time"],
+                    "publicSummary": item.get("summary", ""),
+                }
+                for item in news_by_symbol.get(market["symbol"], [])
+            ],
+        }
+        for market in markets
+    ]
+    prompt = (
+        "根据以下刚抓取的行情、新闻标题与媒体公开摘要，为每个品种生成实时中文解读。只使用输入中的事实，不补造新闻内容，"
+        "不要复述或展示新闻标题。每项返回：reason（一句话具体原因）、brief（两句内简要总结新闻内容）、"
+        "impact（说明为何影响该品种及方向）、watch（后续关注事项）、tags（2到4个短标签）。"
+        "若证据不足，明确写‘现有新闻不足以确认具体原因’，不得套用通用模板。"
+        "VIX 上涨表示预期波动扩大，不要把它当普通股指。输出严格 JSON："
+        '{"markets":[{"symbol":"...","reason":"...","brief":"...","impact":"...","watch":"...","tags":["..."]}]}\n'
+        f"输入数据：{json.dumps(context, ensure_ascii=False)}"
+    )
+    body = json.dumps({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "你是严谨的中文市场日报编辑，区分事实、推断与不确定性。"},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 2200,
+        "response_format": {"type": "json_object"},
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        "https://models.github.ai/inference/chat/completions",
+        data=body,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "X-GitHub-Api-Version": "2026-03-10",
+            "User-Agent": HEADERS["User-Agent"],
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            result = json.loads(response.read())
+        content = result["choices"][0]["message"]["content"].strip()
+        parsed = json.loads(content)
+        return {item["symbol"]: item for item in parsed.get("markets", []) if item.get("symbol")}
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        print(f"AI analysis unavailable: {error}")
+        return {}
 
 
 def main() -> None:
     markets: list[dict] = []
     news_items: list[dict[str, str]] = []
+    news_by_symbol: dict[str, list[dict[str, str]]] = {}
     dates: list[str] = []
     for symbol, name, ticker, query, category in ASSETS:
         try:
-            headlines = fetch_news(query, category)
+            headlines = [enrich_news_item(item) for item in fetch_news(query, category)]
         except (OSError, ET.ParseError):
             headlines = []
-        if headlines:
-            headlines[0]["summary"] = fetch_article_summary(headlines[0]["link"])
         value, change, trade_date, history, session = fetch_quote(ticker)
-        reason, detail, tags, evidence_source, evidence_link = explain(symbol, change, headlines)
         markets.append({
             "symbol": symbol,
             "name": name,
@@ -213,20 +207,43 @@ def main() -> None:
             "change": round(change, 2),
             "history": history,
             "session": session,
-            "reason": reason,
-            "detail": detail,
-            "tags": tags,
-            "evidenceSource": evidence_source,
-            "evidenceLink": evidence_link,
         })
+        news_by_symbol[symbol] = headlines
         news_items.extend(headlines[:2])
         dates.append(trade_date)
+
+    ai_analysis = generate_ai_analysis(markets, news_by_symbol)
+    for market in markets:
+        analysis = ai_analysis.get(market["symbol"], {})
+        headlines = news_by_symbol.get(market["symbol"], [])
+        source = headlines[0] if headlines else {}
+        if analysis:
+            market.update({
+                "reason": analysis.get("reason", "实时解读暂不可用"),
+                "detail": (
+                    f"【报道要点】{analysis.get('brief', '现有新闻不足以形成可靠摘要。')}\n"
+                    f"【市场影响】{analysis.get('impact', '现有信息不足以判断具体影响。')}\n"
+                    f"【后续观察】{analysis.get('watch', '等待下一次数据更新。')}"
+                ),
+                "tags": analysis.get("tags", [])[:4],
+                "analysisStatus": "实时生成",
+            })
+        else:
+            market.update({
+                "reason": "实时解读暂不可用",
+                "detail": "【状态】行情和新闻已更新，但本次 AI 解读生成失败；页面不会使用固定模板代替。",
+                "tags": ["等待重新生成"],
+                "analysisStatus": "生成失败",
+            })
+        market["evidenceSource"] = source.get("source", "")
+        market["evidenceLink"] = source.get("link", "")
 
     equity_change = (markets[0]["change"] + markets[2]["change"]) / 2
     title = "风险偏好回升" if equity_change > 0.25 else "风险情绪趋弱" if equity_change < -0.25 else "市场情绪相对谨慎"
     payload = {
         "date": max(dates),
         "updatedAt": datetime.now(timezone.utc).strftime("数据源：Yahoo Finance · UTC %Y-%m-%d %H:%M"),
+        "analysisGeneratedAt": datetime.now(timezone.utc).isoformat(timespec="minutes"),
         "pulse": {
             "title": title,
             "summary": f"纳指与标普平均变动 {equity_change:+.2f}%；黄金 {markets[2]['change']:+.2f}%，WTI 原油 {markets[3]['change']:+.2f}%。",
