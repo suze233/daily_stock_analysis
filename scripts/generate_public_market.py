@@ -126,10 +126,19 @@ def enrich_news_item(item: dict[str, str]) -> dict[str, str]:
 
 
 def generate_ai_analysis(markets: list[dict], news_by_symbol: dict[str, list[dict[str, str]]]) -> dict[str, dict]:
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("MARKET_AI_TOKEN")
-    if not token:
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
+    if openai_key:
+        token = openai_key
+        base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+        model = os.environ.get("OPENAI_MODEL") or "gpt-4.1-mini"
+    elif deepseek_key:
+        token = deepseek_key
+        base_url = "https://api.deepseek.com"
+        model = "deepseek-chat"
+    else:
+        print("AI analysis unavailable: no OPENAI_API_KEY or DEEPSEEK_API_KEY configured")
         return {}
-    model = os.environ.get("MARKET_AI_MODEL", "openai/gpt-4.1")
     context = [
         {
             "symbol": market["symbol"],
@@ -167,13 +176,12 @@ def generate_ai_analysis(markets: list[dict], news_by_symbol: dict[str, list[dic
         "response_format": {"type": "json_object"},
     }).encode("utf-8")
     request = urllib.request.Request(
-        "https://models.github.ai/inference/chat/completions",
+        f"{base_url}/chat/completions",
         data=body,
         headers={
-            "Accept": "application/vnd.github+json",
+            "Accept": "application/json",
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "X-GitHub-Api-Version": "2026-03-10",
             "User-Agent": HEADERS["User-Agent"],
         },
         method="POST",
@@ -182,6 +190,8 @@ def generate_ai_analysis(markets: list[dict], news_by_symbol: dict[str, list[dic
         with urllib.request.urlopen(request, timeout=60) as response:
             result = json.loads(response.read())
         content = result["choices"][0]["message"]["content"].strip()
+        if content.startswith("```"):
+            content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE)
         parsed = json.loads(content)
         return {item["symbol"]: item for item in parsed.get("markets", []) if item.get("symbol")}
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:

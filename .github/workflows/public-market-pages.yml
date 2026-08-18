@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: read
-  models: read
   pages: write
   id-token: write
 
@@ -36,8 +35,10 @@ jobs:
         run: pip install googlenewsdecoder==0.1.7
       - name: Generate daily market brief
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MARKET_AI_MODEL: openai/gpt-4.1
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || secrets.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || secrets.OPENAI_MODEL }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: python scripts/generate_public_market.py
       - uses: actions/setup-node@v4
         with:
